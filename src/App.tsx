@@ -21,6 +21,7 @@ type MetricParams = {
 type TraceParams = {
   steps: number
   stepSize: number
+  escapeRadius: number
 }
 
 type ClusterParams = {
@@ -42,7 +43,7 @@ type ClusterKey = 'startR' | 'startTheta' | 'startPhi' | 'lz' | 'q' | 'spin'
 
 type RayTrace = {
   points: THREE.Vector3[]
-  color: string
+  color: number
   stopped: 'horizon' | 'turning-point' | 'escaped' | 'complete'
 }
 
@@ -90,6 +91,7 @@ const traceControls: Array<{
 }> = [
   { key: 'steps', label: 'Integrator steps', min: 200, max: 6000, step: 100 },
   { key: 'stepSize', label: 'Step size', min: 0.01, max: 0.2, step: 0.01 },
+  { key: 'escapeRadius', label: 'Escape radius', min: 12, max: 90, step: 1 },
 ]
 
 const defaultRay: RayParams = {
@@ -110,6 +112,7 @@ const defaultMetric: MetricParams = {
 const defaultTrace: TraceParams = {
   steps: 2200,
   stepSize: 0.055,
+  escapeRadius: 42,
 }
 
 const defaultCluster: ClusterParams = {
@@ -192,7 +195,7 @@ function rayEquations(ray: RayParams, metric: MetricParams, trace: TraceParams) 
   let radialSign = ray.radialSign >= 0 ? 1 : -1
   let thetaSign = ray.thetaSign >= 0 ? 1 : -1
   const energy = 1
-  const maxR = Math.max(36, ray.startR * 2.8)
+  const escapeRadius = Math.max(trace.escapeRadius, ray.startR + 0.1, horizon + 1)
   let stopped: RayTrace['stopped'] = 'complete'
 
   for (let step = 0; step < trace.steps; step += 1) {
@@ -203,7 +206,7 @@ function rayEquations(ray: RayParams, metric: MetricParams, trace: TraceParams) 
       break
     }
 
-    if (r > maxR && radialSign > 0) {
+    if (r >= escapeRadius) {
       stopped = 'escaped'
       break
     }
@@ -255,7 +258,9 @@ function rayEquations(ray: RayParams, metric: MetricParams, trace: TraceParams) 
 function buildRayCluster(ray: RayParams, metric: MetricParams, trace: TraceParams, cluster: ClusterParams) {
   const countA = cluster.mode === 'single' ? 1 : Math.max(1, Math.round(cluster.countA))
   const countB = cluster.mode === '2d' ? Math.max(1, Math.round(cluster.countB)) : 1
+  const total = countA * countB
   const rays: RayTrace[] = []
+  let rayIndex = 0
 
   for (let a = 0; a < countA; a += 1) {
     for (let b = 0; b < countB; b += 1) {
@@ -268,8 +273,10 @@ function buildRayCluster(ray: RayParams, metric: MetricParams, trace: TraceParam
       }
 
       const traced = rayEquations(variant.ray, variant.metric, trace)
-      const hue = (210 + a * 17 + b * 43) % 360
-      rays.push({ ...traced, color: `hsl(${hue} 85% 62%)` })
+      const hue = total === 1 ? 205 : (rayIndex / Math.max(1, total - 1)) * 330
+      const color = new THREE.Color().setHSL(hue / 360, 0.9, 0.58).getHex()
+      rays.push({ ...traced, color })
+      rayIndex += 1
     }
   }
 
@@ -429,9 +436,9 @@ function KerrScene({
 
       const geometry = new THREE.BufferGeometry().setFromPoints(ray.points)
       const material = new THREE.LineBasicMaterial({
-        color: new THREE.Color(ray.color),
+        color: ray.color,
         transparent: true,
-        opacity: ray.stopped === 'turning-point' ? 0.42 : 0.78,
+        opacity: ray.stopped === 'turning-point' ? 0.62 : 0.88,
       })
       scene.add(new THREE.Line(geometry, material))
     })
