@@ -44,7 +44,7 @@ type ClusterKey = 'startR' | 'startTheta' | 'startPhi' | 'lz' | 'q' | 'spin'
 type RayTrace = {
   points: THREE.Vector3[]
   color: number
-  stopped: 'horizon' | 'turning-point' | 'escaped' | 'complete'
+  stopped: 'horizon' | 'escaped' | 'range-limit'
 }
 
 const clusterOptions: Array<{ key: ClusterKey; label: string }> = [
@@ -89,7 +89,7 @@ const traceControls: Array<{
   max: number
   step: number
 }> = [
-  { key: 'steps', label: 'Integrator steps', min: 200, max: 6000, step: 100 },
+  { key: 'steps', label: 'Trace budget', min: 1000, max: 50000, step: 500 },
   { key: 'stepSize', label: 'Step size', min: 0.01, max: 0.2, step: 0.01 },
   { key: 'escapeRadius', label: 'Escape radius', min: 12, max: 90, step: 1 },
 ]
@@ -110,7 +110,7 @@ const defaultMetric: MetricParams = {
 }
 
 const defaultTrace: TraceParams = {
-  steps: 2200,
+  steps: 14000,
   stepSize: 0.055,
   escapeRadius: 42,
 }
@@ -196,11 +196,17 @@ function rayEquations(ray: RayParams, metric: MetricParams, trace: TraceParams) 
   let thetaSign = ray.thetaSign >= 0 ? 1 : -1
   const energy = 1
   const escapeRadius = Math.max(trace.escapeRadius, ray.startR + 0.1, horizon + 1)
-  let stopped: RayTrace['stopped'] = 'complete'
+  const maxSteps = Math.max(1, Math.round(trace.steps))
+  const pointStride = Math.max(1, Math.floor(maxSteps / 6500))
+  let stopped: RayTrace['stopped'] = 'range-limit'
 
-  for (let step = 0; step < trace.steps; step += 1) {
+  const pushPoint = () => {
     points.push(kerrToCartesian(r, theta, phi, spin))
+  }
 
+  pushPoint()
+
+  for (let step = 0; step < maxSteps; step += 1) {
     if (r <= horizon + 0.035) {
       stopped = 'horizon'
       break
@@ -221,16 +227,12 @@ function rayEquations(ray: RayParams, metric: MetricParams, trace: TraceParams) 
     const thetaPotential =
       ray.q + spin * spin * energy * energy * cosTheta * cosTheta - (ray.lz * ray.lz * cosTheta * cosTheta) / (sinTheta * sinTheta)
 
-    if (radialPotential < 0 && thetaPotential < 0) {
-      stopped = 'turning-point'
-      break
-    }
-
     let dr = 0
     if (radialPotential >= 0) {
       dr = (radialSign * Math.sqrt(radialPotential)) / sigma
     } else {
       radialSign *= -1
+      r = Math.max(horizon + 0.04, r + radialSign * trace.stepSize * 0.5)
     }
 
     let dTheta = 0
@@ -238,6 +240,7 @@ function rayEquations(ray: RayParams, metric: MetricParams, trace: TraceParams) 
       dTheta = (thetaSign * Math.sqrt(thetaPotential)) / sigma
     } else {
       thetaSign *= -1
+      theta = clamp(theta + thetaSign * trace.stepSize * 0.5, 0.01, Math.PI - 0.01)
     }
 
     const dPhi = (ray.lz / (sinTheta * sinTheta) - spin * energy + (spin * p) / delta) / sigma
@@ -249,6 +252,22 @@ function rayEquations(ray: RayParams, metric: MetricParams, trace: TraceParams) 
     if (theta <= 0.01 || theta >= Math.PI - 0.01) {
       theta = clamp(theta, 0.01, Math.PI - 0.01)
       thetaSign *= -1
+    }
+
+    if (r <= horizon + 0.035) {
+      stopped = 'horizon'
+      pushPoint()
+      break
+    }
+
+    if (r >= escapeRadius) {
+      stopped = 'escaped'
+      pushPoint()
+      break
+    }
+
+    if ((step + 1) % pointStride === 0 || step === maxSteps - 1) {
+      pushPoint()
     }
   }
 
@@ -438,7 +457,7 @@ function KerrScene({
       const material = new THREE.LineBasicMaterial({
         color: ray.color,
         transparent: true,
-        opacity: ray.stopped === 'turning-point' ? 0.62 : 0.88,
+        opacity: ray.stopped === 'range-limit' ? 0.62 : 0.88,
       })
       scene.add(new THREE.Line(geometry, material))
     })
@@ -531,9 +550,9 @@ function App() {
   const stats = useMemo(() => {
     const horizon = rays.filter((item) => item.stopped === 'horizon').length
     const escaped = rays.filter((item) => item.stopped === 'escaped').length
-    const turning = rays.filter((item) => item.stopped === 'turning-point').length
+    const limited = rays.filter((item) => item.stopped === 'range-limit').length
 
-    return { horizon, escaped, turning, total: rays.length }
+    return { horizon, escaped, limited, total: rays.length }
   }, [rays])
 
   const updateRay = (key: keyof RayParams, value: number) => {
@@ -742,8 +761,8 @@ function App() {
             <strong>{stats.escaped}</strong>
           </div>
           <div>
-            <span>Turned</span>
-            <strong>{stats.turning}</strong>
+            <span>Limited</span>
+            <strong>{stats.limited}</strong>
           </div>
         </div>
         <KerrScene rays={rays} metric={metric} render={render} />
