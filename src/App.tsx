@@ -7,8 +7,6 @@ import {
   NumericControl,
   SegmentedControl,
   SelectControl,
-  StatGrid,
-  StatItem,
   ToggleControl,
 } from '@openclaw/sim-ui'
 import './App.css'
@@ -525,13 +523,6 @@ function App() {
   const [cluster, setCluster] = useState(defaultCluster)
   const [render, setRender] = useState(defaultRender)
   const rays = useMemo(() => buildRayCluster(ray, metric, trace, cluster), [cluster, metric, ray, trace])
-  const stats = useMemo(() => {
-    const horizon = rays.filter((item) => item.stopped === 'horizon').length
-    const escaped = rays.filter((item) => item.stopped === 'escaped').length
-    const limited = rays.filter((item) => item.stopped === 'range-limit').length
-
-    return { horizon, escaped, limited, total: rays.length }
-  }, [rays])
 
   const updateRay = (key: keyof RayParams, value: number) => {
     setRay((current) => ({ ...current, [key]: value }))
@@ -648,14 +639,6 @@ function App() {
             />
           </ControlGroup>
         </>
-      }
-      stats={
-        <StatGrid>
-          <StatItem label="Rays" value={stats.total} />
-          <StatItem label="Captured" value={stats.horizon} />
-          <StatItem label="Escaped" value={stats.escaped} />
-          <StatItem label="Limited" value={stats.limited} />
-        </StatGrid>
       }
       viewport={<KerrScene rays={rays} metric={metric} render={render} />}
     />
