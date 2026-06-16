@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { TrackballControls } from 'three/examples/jsm/controls/TrackballControls.js'
+import {
+  AppFrame,
+  ControlGroup,
+  NumericControl,
+  SegmentedControl,
+  SelectControl,
+  StatGrid,
+  StatItem,
+  ToggleControl,
+} from '@openclaw/sim-ui'
 import './App.css'
 
 type RayParams = {
@@ -136,10 +146,6 @@ function clamp(value: number, min: number, max: number) {
 
 function degreesToRadians(value: number) {
   return (value * Math.PI) / 180
-}
-
-function formatValue(value: number, step: number) {
-  return value.toFixed(step < 0.1 ? 2 : step < 1 ? 1 : 0)
 }
 
 function horizonRadius(metric: MetricParams) {
@@ -510,36 +516,6 @@ function KerrScene({
   return <div className="scene" ref={mountRef} aria-label="Interactive Kerr ray tracing scene" />
 }
 
-function NumericControl<T extends Record<string, number>>({
-  item,
-  values,
-  onChange,
-}: {
-  item: { key: keyof T; label: string; min: number; max: number; step: number; suffix?: string }
-  values: T
-  onChange: (key: keyof T, value: number) => void
-}) {
-  return (
-    <label className="control">
-      <span>
-        {item.label}
-        <strong>
-          {formatValue(values[item.key], item.step)}
-          {item.suffix ?? ''}
-        </strong>
-      </span>
-      <input
-        type="range"
-        min={item.min}
-        max={item.max}
-        step={item.step}
-        value={values[item.key]}
-        onChange={(event) => onChange(item.key, Number(event.target.value))}
-      />
-    </label>
-  )
-}
-
 function App() {
   const [ray, setRay] = useState(defaultRay)
   const [metric, setMetric] = useState(defaultMetric)
@@ -572,202 +548,115 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
-      <aside className="panel" aria-label="Kerr ray controls">
-        <header className="brand">
-          <h1>Blackhole</h1>
-          <p>Kerr null geodesic explorer</p>
-        </header>
-
-        <section className="control-section">
-          <div className="section-title">Metric</div>
-          {metricControls.map((item) => (
-            <NumericControl item={item} key={item.key} values={metric} onChange={updateMetric} />
-          ))}
-        </section>
-
-        <section className="control-section">
-          <div className="section-title">Ray</div>
-          {rayControls.map((item) => (
-            <NumericControl item={item} key={item.key} values={ray} onChange={updateRay} />
-          ))}
-          <div className="button-row" aria-label="Ray direction">
-            <button
-              className={ray.radialSign < 0 ? 'active' : ''}
-              type="button"
-              onClick={() => updateRay('radialSign', -1)}
-            >
-              Inward
-            </button>
-            <button
-              className={ray.radialSign > 0 ? 'active' : ''}
-              type="button"
-              onClick={() => updateRay('radialSign', 1)}
-            >
-              Outward
-            </button>
-          </div>
-          <div className="button-row" aria-label="Polar direction">
-            <button
-              className={ray.thetaSign < 0 ? 'active' : ''}
-              type="button"
-              onClick={() => updateRay('thetaSign', -1)}
-            >
-              North
-            </button>
-            <button
-              className={ray.thetaSign > 0 ? 'active' : ''}
-              type="button"
-              onClick={() => updateRay('thetaSign', 1)}
-            >
-              South
-            </button>
-          </div>
-        </section>
-
-        <section className="control-section">
-          <div className="section-title">Cluster</div>
-          <div className="button-row three" aria-label="Cluster mode">
-            <button className={cluster.mode === 'single' ? 'active' : ''} type="button" onClick={() => setCluster((current) => ({ ...current, mode: 'single' }))}>
-              Single
-            </button>
-            <button className={cluster.mode === '1d' ? 'active' : ''} type="button" onClick={() => setCluster((current) => ({ ...current, mode: '1d' }))}>
-              1D
-            </button>
-            <button className={cluster.mode === '2d' ? 'active' : ''} type="button" onClick={() => setCluster((current) => ({ ...current, mode: '2d' }))}>
-              2D
-            </button>
-          </div>
-          <label className="select-control">
-            <span>Axis A</span>
-            <select value={cluster.axisA} onChange={(event) => setCluster((current) => ({ ...current, axisA: event.target.value as ClusterKey }))}>
-              {clusterOptions.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="control">
-            <span>
-              Count A
-              <strong>{cluster.countA}</strong>
-            </span>
-            <input
-              type="range"
-              min={1}
-              max={41}
-              step={2}
-              value={cluster.countA}
-              onChange={(event) => setCluster((current) => ({ ...current, countA: Number(event.target.value) }))}
+    <AppFrame
+      className="blackhole-app"
+      title="Blackhole"
+      subtitle="Kerr null geodesic explorer"
+      viewportLabel="Kerr ray tracing workspace"
+      controls={
+        <>
+          <ControlGroup title="Metric">
+            {metricControls.map((item) => (
+              <NumericControl item={item} key={item.key} values={metric} onChange={updateMetric} />
+            ))}
+          </ControlGroup>
+          <ControlGroup title="Ray">
+            {rayControls.map((item) => (
+              <NumericControl item={item} key={item.key} values={ray} onChange={updateRay} />
+            ))}
+            <SegmentedControl
+              label="Ray direction"
+              value={ray.radialSign < 0 ? 'inward' : 'outward'}
+              options={[
+                { value: 'inward', label: 'Inward' },
+                { value: 'outward', label: 'Outward' },
+              ]}
+              onChange={(value) => updateRay('radialSign', value === 'inward' ? -1 : 1)}
             />
-          </label>
-          <label className="control">
-            <span>
-              Step A
-              <strong>{cluster.stepA.toFixed(2)}</strong>
-            </span>
-            <input
-              type="range"
-              min={-2}
-              max={2}
-              step={0.02}
-              value={cluster.stepA}
-              onChange={(event) => setCluster((current) => ({ ...current, stepA: Number(event.target.value) }))}
+            <SegmentedControl
+              label="Polar direction"
+              value={ray.thetaSign < 0 ? 'north' : 'south'}
+              options={[
+                { value: 'north', label: 'North' },
+                { value: 'south', label: 'South' },
+              ]}
+              onChange={(value) => updateRay('thetaSign', value === 'north' ? -1 : 1)}
             />
-          </label>
-          <label className="select-control">
-            <span>Axis B</span>
-            <select
+          </ControlGroup>
+          <ControlGroup title="Cluster">
+            <SegmentedControl
+              label="Cluster mode"
+              value={cluster.mode}
+              options={[
+                { value: 'single', label: 'Single' },
+                { value: '1d', label: '1D' },
+                { value: '2d', label: '2D' },
+              ]}
+              onChange={(value) => setCluster((current) => ({ ...current, mode: value }))}
+            />
+            <SelectControl
+              label="Axis A"
+              value={cluster.axisA}
+              options={clusterOptions.map((option) => ({ value: option.key, label: option.label }))}
+              onChange={(value) => setCluster((current) => ({ ...current, axisA: value }))}
+            />
+            <NumericControl
+              item={{ key: 'countA', label: 'Count A', min: 1, max: 41, step: 2 }}
+              values={cluster}
+              onChange={(key, value) => setCluster((current) => ({ ...current, [key]: value }))}
+            />
+            <NumericControl
+              item={{ key: 'stepA', label: 'Step A', min: -2, max: 2, step: 0.02 }}
+              values={cluster}
+              onChange={(key, value) => setCluster((current) => ({ ...current, [key]: value }))}
+            />
+            <SelectControl
+              label="Axis B"
               disabled={cluster.mode !== '2d'}
               value={cluster.axisB}
-              onChange={(event) => setCluster((current) => ({ ...current, axisB: event.target.value as ClusterKey }))}
-            >
-              {clusterOptions.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="control">
-            <span>
-              Count B
-              <strong>{cluster.countB}</strong>
-            </span>
-            <input
-              type="range"
-              min={1}
-              max={25}
-              step={2}
-              disabled={cluster.mode !== '2d'}
-              value={cluster.countB}
-              onChange={(event) => setCluster((current) => ({ ...current, countB: Number(event.target.value) }))}
+              options={clusterOptions.map((option) => ({ value: option.key, label: option.label }))}
+              onChange={(value) => setCluster((current) => ({ ...current, axisB: value }))}
             />
-          </label>
-          <label className="control">
-            <span>
-              Step B
-              <strong>{cluster.stepB.toFixed(2)}</strong>
-            </span>
-            <input
-              type="range"
-              min={-4}
-              max={4}
-              step={0.05}
+            <NumericControl
+              item={{ key: 'countB', label: 'Count B', min: 1, max: 25, step: 2 }}
               disabled={cluster.mode !== '2d'}
-              value={cluster.stepB}
-              onChange={(event) => setCluster((current) => ({ ...current, stepB: Number(event.target.value) }))}
+              values={cluster}
+              onChange={(key, value) => setCluster((current) => ({ ...current, [key]: value }))}
             />
-          </label>
-        </section>
-
-        <section className="control-section">
-          <div className="section-title">Trace</div>
-          {traceControls.map((item) => (
-            <NumericControl item={item} key={item.key} values={trace} onChange={updateTrace} />
-          ))}
-          <label className="toggle">
-            <input
-              type="checkbox"
+            <NumericControl
+              item={{ key: 'stepB', label: 'Step B', min: -4, max: 4, step: 0.05 }}
+              disabled={cluster.mode !== '2d'}
+              values={cluster}
+              onChange={(key, value) => setCluster((current) => ({ ...current, [key]: value }))}
+            />
+          </ControlGroup>
+          <ControlGroup title="Trace">
+            {traceControls.map((item) => (
+              <NumericControl item={item} key={item.key} values={trace} onChange={updateTrace} />
+            ))}
+            <ToggleControl
+              label="Event horizon"
               checked={render.eventHorizon}
-              onChange={(event) => setRender((current) => ({ ...current, eventHorizon: event.target.checked }))}
+              onChange={(checked) => setRender((current) => ({ ...current, eventHorizon: checked }))}
             />
-            <span>Event horizon</span>
-          </label>
-          <label className="toggle">
-            <input
-              type="checkbox"
+            <ToggleControl
+              label="Ergosphere"
               checked={render.ergosphere}
-              onChange={(event) => setRender((current) => ({ ...current, ergosphere: event.target.checked }))}
+              onChange={(checked) => setRender((current) => ({ ...current, ergosphere: checked }))}
             />
-            <span>Ergosphere</span>
-          </label>
-        </section>
-      </aside>
-
-      <section className="workspace" aria-label="Kerr ray tracing workspace">
-        <div className="stats" aria-label="Ray trace statistics">
-          <div>
-            <span>Rays</span>
-            <strong>{stats.total}</strong>
-          </div>
-          <div>
-            <span>Captured</span>
-            <strong>{stats.horizon}</strong>
-          </div>
-          <div>
-            <span>Escaped</span>
-            <strong>{stats.escaped}</strong>
-          </div>
-          <div>
-            <span>Limited</span>
-            <strong>{stats.limited}</strong>
-          </div>
-        </div>
-        <KerrScene rays={rays} metric={metric} render={render} />
-      </section>
-    </main>
+          </ControlGroup>
+        </>
+      }
+      stats={
+        <StatGrid>
+          <StatItem label="Rays" value={stats.total} />
+          <StatItem label="Captured" value={stats.horizon} />
+          <StatItem label="Escaped" value={stats.escaped} />
+          <StatItem label="Limited" value={stats.limited} />
+        </StatGrid>
+      }
+      viewport={<KerrScene rays={rays} metric={metric} render={render} />}
+    />
   )
 }
 
