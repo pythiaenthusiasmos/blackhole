@@ -87,7 +87,7 @@ const metricControls: Array<{
   step: number
 }> = [
   { key: 'mass', label: 'Mass M', min: 0, max: 10, step: 0.05 },
-  { key: 'spin', label: 'Spin a', min: -2, max: 2, step: 0.01 },
+  { key: 'spin', label: 'Spin a', min: -1, max: 1, step: 0.01 },
 ]
 
 const traceControls: Array<{
@@ -172,7 +172,7 @@ function applyClusterOffset(ray: RayParams, metric: MetricParams, key: ClusterKe
   const nextMetric = { ...metric }
 
   if (key === 'spin') {
-    const spinLimit = Math.max(0, 0.99 * nextMetric.mass)
+    const spinLimit = Math.max(0, Math.min(1, 0.99 * nextMetric.mass))
     nextMetric.spin = clamp(nextMetric.spin + offset, -spinLimit, spinLimit)
   } else if (key === 'startTheta') {
     nextRay.startTheta = clamp(nextRay.startTheta + offset, 1, 179)
@@ -531,7 +531,7 @@ function App() {
   const updateMetric = (key: keyof MetricParams, value: number) => {
     setMetric((current) => {
       const next = { ...current, [key]: value }
-      const spinLimit = Math.max(0, 0.99 * next.mass)
+      const spinLimit = Math.max(0, Math.min(1, 0.99 * next.mass))
       next.spin = clamp(next.spin, -spinLimit, spinLimit)
       return next
     })
