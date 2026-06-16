@@ -74,11 +74,11 @@ const rayControls: Array<{
   step: number
   suffix?: string
 }> = [
-  { key: 'startR', label: 'Start r', min: 2.2, max: 28, step: 0.1, suffix: ' M' },
+  { key: 'startR', label: 'Start r', min: 0, max: 80, step: 0.1, suffix: ' M' },
   { key: 'startTheta', label: 'Start theta', min: 3, max: 177, step: 1, suffix: ' deg' },
   { key: 'startPhi', label: 'Start phi', min: 0, max: 360, step: 1, suffix: ' deg' },
-  { key: 'lz', label: 'Angular momentum Lz', min: -9, max: 9, step: 0.05 },
-  { key: 'q', label: 'Carter Q', min: 0, max: 64, step: 0.2 },
+  { key: 'lz', label: 'Angular momentum Lz/M', min: -30, max: 30, step: 0.05 },
+  { key: 'q', label: 'Carter Q', min: 0, max: 256, step: 0.5 },
 ]
 
 const metricControls: Array<{
@@ -88,8 +88,8 @@ const metricControls: Array<{
   max: number
   step: number
 }> = [
-  { key: 'mass', label: 'Mass M', min: 0.5, max: 3, step: 0.05 },
-  { key: 'spin', label: 'Spin a', min: -0.99, max: 0.99, step: 0.01 },
+  { key: 'mass', label: 'Mass M', min: 0, max: 10, step: 0.05 },
+  { key: 'spin', label: 'Spin a', min: -2, max: 2, step: 0.01 },
 ]
 
 const traceControls: Array<{
@@ -101,7 +101,7 @@ const traceControls: Array<{
 }> = [
   { key: 'steps', label: 'Trace budget', min: 1000, max: 50000, step: 500 },
   { key: 'stepSize', label: 'Step size', min: 0.01, max: 0.2, step: 0.01 },
-  { key: 'escapeRadius', label: 'Escape radius', min: 12, max: 90, step: 1 },
+  { key: 'escapeRadius', label: 'Escape radius', min: 1, max: 180, step: 1 },
 ]
 
 const defaultRay: RayParams = {
@@ -174,13 +174,14 @@ function applyClusterOffset(ray: RayParams, metric: MetricParams, key: ClusterKe
   const nextMetric = { ...metric }
 
   if (key === 'spin') {
-    nextMetric.spin = clamp(nextMetric.spin + offset, -0.99 * nextMetric.mass, 0.99 * nextMetric.mass)
+    const spinLimit = Math.max(0, 0.99 * nextMetric.mass)
+    nextMetric.spin = clamp(nextMetric.spin + offset, -spinLimit, spinLimit)
   } else if (key === 'startTheta') {
     nextRay.startTheta = clamp(nextRay.startTheta + offset, 1, 179)
   } else if (key === 'startPhi') {
     nextRay.startPhi = ((nextRay.startPhi + offset) % 360 + 360) % 360
   } else if (key === 'startR') {
-    nextRay.startR = Math.max(1.2, nextRay.startR + offset)
+    nextRay.startR = Math.max(0, nextRay.startR + offset)
   } else if (key === 'q') {
     nextRay.q = Math.max(0, nextRay.q + offset)
   } else {
@@ -195,13 +196,14 @@ function rayEquations(ray: RayParams, metric: MetricParams, trace: TraceParams) 
   const mass = metric.mass
   const spin = clamp(metric.spin, -0.999 * mass, 0.999 * mass)
   const horizon = horizonRadius(metric)
-  let r = Math.max(ray.startR, horizon + 0.02)
+  const lz = ray.lz * mass
+  let r = Math.max(ray.startR, horizon > 0 ? horizon + 0.02 : 0.02)
   let theta = clamp(degreesToRadians(ray.startTheta), 0.01, Math.PI - 0.01)
   let phi = degreesToRadians(ray.startPhi)
   let radialSign = ray.radialSign >= 0 ? 1 : -1
   let thetaSign = ray.thetaSign >= 0 ? 1 : -1
   const energy = 1
-  const escapeRadius = Math.max(trace.escapeRadius, ray.startR + 0.1, horizon + 1)
+  const escapeRadius = Math.max(trace.escapeRadius, ray.startR + 0.1, horizon + 1, 1)
   const maxSteps = Math.max(1, Math.round(trace.steps))
   const pointStride = Math.max(1, Math.floor(maxSteps / 6500))
   let stopped: RayTrace['stopped'] = 'range-limit'
@@ -213,7 +215,7 @@ function rayEquations(ray: RayParams, metric: MetricParams, trace: TraceParams) 
   pushPoint()
 
   for (let step = 0; step < maxSteps; step += 1) {
-    if (r <= horizon + 0.035) {
+    if (horizon > 0 && r <= horizon + 0.035) {
       stopped = 'horizon'
       break
     }
@@ -227,18 +229,18 @@ function rayEquations(ray: RayParams, metric: MetricParams, trace: TraceParams) 
     const cosTheta = Math.cos(theta)
     const delta = Math.max(0.0005, r * r - 2 * mass * r + spin * spin)
     const sigma = Math.max(0.0005, r * r + spin * spin * cosTheta * cosTheta)
-    const p = energy * (r * r + spin * spin) - spin * ray.lz
+    const p = energy * (r * r + spin * spin) - spin * lz
     const radialPotential =
-      p * p - delta * (ray.q + (ray.lz - spin * energy) * (ray.lz - spin * energy))
+      p * p - delta * (ray.q + (lz - spin * energy) * (lz - spin * energy))
     const thetaPotential =
-      ray.q + spin * spin * energy * energy * cosTheta * cosTheta - (ray.lz * ray.lz * cosTheta * cosTheta) / (sinTheta * sinTheta)
+      ray.q + spin * spin * energy * energy * cosTheta * cosTheta - (lz * lz * cosTheta * cosTheta) / (sinTheta * sinTheta)
 
     let dr = 0
     if (radialPotential >= 0) {
       dr = (radialSign * Math.sqrt(radialPotential)) / sigma
     } else {
       radialSign *= -1
-      r = Math.max(horizon + 0.04, r + radialSign * trace.stepSize * 0.5)
+      r = Math.max(horizon > 0 ? horizon + 0.04 : 0.02, r + radialSign * trace.stepSize * 0.5)
     }
 
     let dTheta = 0
@@ -249,7 +251,7 @@ function rayEquations(ray: RayParams, metric: MetricParams, trace: TraceParams) 
       theta = clamp(theta + thetaSign * trace.stepSize * 0.5, 0.01, Math.PI - 0.01)
     }
 
-    const dPhi = (ray.lz / (sinTheta * sinTheta) - spin * energy + (spin * p) / delta) / sigma
+    const dPhi = (lz / (sinTheta * sinTheta) - spin * energy + (spin * p) / delta) / sigma
 
     r += dr * trace.stepSize
     theta += dTheta * trace.stepSize
@@ -260,7 +262,7 @@ function rayEquations(ray: RayParams, metric: MetricParams, trace: TraceParams) 
       thetaSign *= -1
     }
 
-    if (r <= horizon + 0.035) {
+    if (horizon > 0 && r <= horizon + 0.035) {
       stopped = 'horizon'
       pushPoint()
       break
@@ -412,7 +414,7 @@ function KerrScene({
     disk.rotation.x = -Math.PI / 2
     scene.add(disk)
 
-    if (render.eventHorizon) {
+    if (render.eventHorizon && horizonRadius(metric) > 0.001) {
       const horizon = new THREE.Mesh(
         makeHorizonMesh(metric),
         new THREE.MeshStandardMaterial({
@@ -426,7 +428,7 @@ function KerrScene({
       scene.add(horizon)
     }
 
-    if (render.ergosphere) {
+    if (render.ergosphere && metric.mass > 0.001) {
       const ergo = new THREE.Mesh(
         makeErgosphereMesh(metric),
         new THREE.MeshStandardMaterial({
@@ -538,7 +540,8 @@ function App() {
   const updateMetric = (key: keyof MetricParams, value: number) => {
     setMetric((current) => {
       const next = { ...current, [key]: value }
-      next.spin = clamp(next.spin, -0.99 * next.mass, 0.99 * next.mass)
+      const spinLimit = Math.max(0, 0.99 * next.mass)
+      next.spin = clamp(next.spin, -spinLimit, spinLimit)
       return next
     })
   }
@@ -551,7 +554,6 @@ function App() {
     <AppFrame
       className="blackhole-app"
       title="Blackhole"
-      subtitle="Kerr null geodesic explorer"
       viewportLabel="Kerr ray tracing workspace"
       controls={
         <>

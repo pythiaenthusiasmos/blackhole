@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@openclaw/sim-ui": "github:pythiaenthusiasmos/sim-ui#7685d59",
+    "@openclaw/sim-ui": "github:pythiaenthusiasmos/sim-ui#c188090",
     "@types/three": "^0.184.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
